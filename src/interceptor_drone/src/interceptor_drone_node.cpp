@@ -27,7 +27,7 @@ class InterceptorPublisher : public rclcpp::Node {
             path_publisher_   = this->create_publisher<nav_msgs::msg::Path>("/interceptor/path", 10);
             marker_publisher_ = this->create_publisher<visualization_msgs::msg::Marker>("/interceptor/marker", 10);
 
-            this->create_subscription<geometry_msgs::msg::PoseStamped>("/lead/pose", 1,
+            lead_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/lead/pose", 1,
                 std::bind(&InterceptorPublisher::poseCallback, this, std::placeholders::_1));
 
             timer_ = this->create_wall_timer(20ms, std::bind(&InterceptorPublisher::update, this));
@@ -235,6 +235,7 @@ class InterceptorPublisher : public rclcpp::Node {
     std::ofstream csv_;
 
     rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr lead_sub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr publisher_;
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr publisher_kill_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;

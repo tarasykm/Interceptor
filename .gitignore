@@ -25,3 +25,5 @@ Makefile
 # Python cache (for launch files)
 __pycache__/
 *.pyc
+
+CLAUDE.md
