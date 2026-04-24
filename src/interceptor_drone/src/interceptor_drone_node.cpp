@@ -186,9 +186,19 @@ class InterceptorPublisher : public rclcpp::Node {
                            dz*(target_vel_[2] - vz)) / range;
             closing_vel_ = -rdot;
 
-            const double N = 30.0;
-            omega_yaw_   = N * closing_vel_ * LOS_rate_az_;
-            omega_pitch_ = N * closing_vel_ * LOS_rate_el_;
+            if (closing_vel_ > 0.0) {
+                const double N = 30.0;
+                omega_yaw_   = N * closing_vel_ * LOS_rate_az_;
+                omega_pitch_ = N * closing_vel_ * LOS_rate_el_;
+            } else {
+                // Missed — pure pursuit: steer heading directly toward current LOS
+                double yaw_err = LOS_az_ - yaw_;
+                if (yaw_err >  M_PI) yaw_err -= 2 * M_PI;
+                if (yaw_err < -M_PI) yaw_err += 2 * M_PI;
+                const double K = 5.0;
+                omega_yaw_   = K * yaw_err;
+                omega_pitch_ = K * (LOS_el_ - pitch_);
+            }
 
             omega_yaw_   = std::clamp(omega_yaw_,   -max_LOS_az_rate, max_LOS_az_rate);
             omega_pitch_ = std::clamp(omega_pitch_, -max_LOS_el_rate, max_LOS_el_rate);
@@ -204,15 +214,15 @@ class InterceptorPublisher : public rclcpp::Node {
 
     double x_{0.0}, y_{0.0}, z_{0.0};
     double vx{0.0}, vy{0.0}, vz{0.0};
-    double yaw_{M_PI / 4.0}, pitch_{0.615};  // initial heading toward lead at (10,10,10)
+    double yaw_{0}, pitch_{M_PI/2};
     const double speed_{15.0};
     double omega_yaw_{0.0};
     double omega_pitch_{0.0};
     double closing_vel_{0.0};
     double dt_ = 0.02;
 
-    double max_LOS_az_rate{45*M_PI/180};
-    double max_LOS_el_rate{45*M_PI/180};
+    double max_LOS_az_rate{55*M_PI/180};
+    double max_LOS_el_rate{55*M_PI/180};
 
     double LOS_az_{0.0};
     double LOS_el_{0.0};

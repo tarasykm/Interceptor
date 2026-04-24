@@ -6,6 +6,8 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "visualization_msgs/msg/marker.hpp"
+#include <random>
+#include <math.h>
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
@@ -21,7 +23,7 @@ class LeadDronePublisher : public rclcpp::Node {
         path_publisher_ = this->create_publisher<nav_msgs::msg::Path>("/lead/path", 10);
         marker_publisher_ = this->create_publisher<visualization_msgs::msg::Marker>("/lead/marker", 10);
 
-        this->create_subscription<std_msgs::msg::Int32>("/interceptor/kill", 1,
+        kill_sub_ = this->create_subscription<std_msgs::msg::Int32>("/interceptor/kill", 1,
                 std::bind(&LeadDronePublisher::kill, this, std::placeholders::_1));
 
         timer_ = this->create_wall_timer(20ms, std::bind(&LeadDronePublisher::timer_callback, this));
@@ -30,6 +32,7 @@ class LeadDronePublisher : public rclcpp::Node {
 
     void timer_callback()
     {
+        update_random_rates();
         yaw_ += omega_yaw_ * dt_;
         pitch_ += omega_pitch_ * dt_;
 
@@ -80,7 +83,6 @@ class LeadDronePublisher : public rclcpp::Node {
 
         marker_publisher_->publish(marker);
 
-        // Publish path at 5 Hz (every 10th tick)
         if (++count_ % 10 == 0) {
             auto path_msg = nav_msgs::msg::Path();
             path_msg.header.stamp    = stamp;
@@ -89,6 +91,21 @@ class LeadDronePublisher : public rclcpp::Node {
             path_publisher_->publish(path_msg);
         }
     }
+    
+    void update_random_rates() {
+        rate_change_timer_ += dt_;
+        if (rate_change_timer_ >= rate_change_interval_) {
+            rate_change_timer_ = 0.0;
+            target_omega_yaw_   = rate_dist_(rng_);
+            target_omega_pitch_ = rate_dist_(rng_) * 0.5;  // less aggressive in pitch
+        }
+
+        const double alpha = 0.02;
+        omega_yaw_   += alpha * (target_omega_yaw_   - omega_yaw_);
+        omega_pitch_ += alpha * (target_omega_pitch_ - omega_pitch_);
+
+        pitch_ = std::clamp(pitch_, -M_PI/3.0, M_PI/3.0);
+    }
 
     void kill(const std_msgs::msg::Int32::SharedPtr msg) {
         (void)msg;
@@ -96,6 +113,7 @@ class LeadDronePublisher : public rclcpp::Node {
     }
 
     rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr kill_sub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr publisher_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_publisher_;
@@ -103,14 +121,22 @@ class LeadDronePublisher : public rclcpp::Node {
     std::vector<geometry_msgs::msg::PoseStamped> poses_;
 
     // State
-    double yaw_{0.0}, pitch_{0.1};
+    double yaw_{M_PI}, pitch_{0.1};
 
     // Params
     const double speed_ = 5.0;
-    double omega_yaw_ = 0.3;   // rad/s
-    double omega_pitch_ = 0.1; // rad/s
+    double omega_yaw_, omega_pitch_; // rad/s
     double dt_ = 0.02;
     double x_ = 10.0, y_ = 10.0, z_ = 10.0;
+
+    double target_omega_yaw_{0.5};
+    double target_omega_pitch_{0.3};
+    double rate_change_timer_{0.0};
+    const double rate_change_interval_{1.0};  // seconds between new random targets
+    const double max_omega_{30*M_PI/180};             // rad/s max turn rate
+
+    std::mt19937 rng_{std::random_device{}()};
+    std::uniform_real_distribution<double> rate_dist_{-max_omega_, max_omega_};
 };
 
 int main(int argc, char * argv[])
